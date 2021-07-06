@@ -1,0 +1,77 @@
+---
+title: "Predicting movements"
+author: "HA"
+date: "7/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(lattice); library(ggplot2); library(caret); library(randomForest); library(rpart); library(rpart.plot);
+```
+
+## Importing file and cleaning the dataset
+
+```{r}
+pml_training <- read.csv("pml-training.csv" ,na.strings=c("NA","#DIV/0!",""), header = TRUE)
+pml_testing <- read.csv("pml-testing.csv", na.strings=c("NA","#DIV/0!",""), header = TRUE)
+```
+
+Removing variables that are missing more than 80% of time and some variables like user name, time stamps and new window information that cannot explain movements.
+```{r}
+ShareMissing <- colMeans(is.na(pml_training))
+NamesNotMissing <- names(ShareMissing[ShareMissing<0.8])
+pml_training <- subset(pml_training, select = as.array(NamesNotMissing))
+pml_training <- subset(pml_training, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+pml_testing <- subset(pml_testing, select = as.array(NamesNotMissing)[1:59])
+pml_testing <- subset(pml_testing, select = -c(X, user_name, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window, num_window))
+```
+
+Now we partition the training data into training and testing subsets
+```{r}
+inTrain = createDataPartition(pml_training$classe, p = 0.7, list = FALSE)
+training = pml_training[ inTrain,]
+testing = pml_training[-inTrain,]
+```
+
+## Training model - Decision Tree
+In this section, we train the decision tree model and random forest. In the next section, we will test it on the testing data. We start with the decision tree.
+```{r}
+modFit <- train(classe~., method="rpart", data=training)
+```
+Now we plot the final model of the decision tree.
+```{r}
+library(rattle)
+fancyRpartPlot(modFit$finalModel)
+```
+Based on the decision tree, if roll_belt is less than 130 then the classe is E, if roll_belt is large then pitch_forearm is checked. If it is smaller than -34, then it is A. Otherwise, the process continues through the other branch.
+
+Now we test using random forest.
+```{r}
+modFit_RF <- randomForest(factor(training$classe) ~ .,   data=training, do.trace=FALSE)
+modFit_RF
+```
+
+The model predicts the training data quite well.
+
+## Testing the model
+In this section, we test the models on the testing subset of the data. We start from the decision tree.
+```{r}
+predicted <- predict(modFit, newdata =  testing)
+confusionMatrix(table(predicted, testing$classe))
+```
+
+The results are not that good, as the accuracy is less than 50%. We test the random forest now.
+```{r}
+predicted_RF <- predict(modFit_RF, newdata =  testing)
+confusionMatrix(table(predicted_RF, testing$classe))
+```
+
+The random forest predicts the data quite well with more than 99% accuracy. We will use the random forest to predict the actual testing data.
+
+## Finding the classes for the actual test data
+Our predictions are as follows for the final data.
+```{r}
+predicted_testing <- predict(modFit_RF, newdata =  pml_testing)
+predicted_testing
+```
